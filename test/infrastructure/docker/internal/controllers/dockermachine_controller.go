@@ -331,19 +331,22 @@ func (r *DockerMachineReconciler) reconcileNormal(ctx context.Context, cluster *
 		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 	}
 
-	// Usually a cloud provider will do this, but there is no docker-cloud provider.
-	// Requeue if there is an error, as this is likely momentary load balancer
-	// state changes during control plane provisioning.
-	remoteClient, err := r.Tracker.GetClient(ctx, client.ObjectKeyFromObject(cluster))
-	if err != nil {
-		return ctrl.Result{}, errors.Wrap(err, "failed to generate workload cluster client")
-	}
-	if err := externalMachine.SetNodeProviderID(ctx, remoteClient); err != nil {
-		if errors.As(err, &docker.ContainerNotRunningError{}) {
-			return ctrl.Result{}, errors.Wrap(err, "failed to patch the Kubernetes node with the machine providerID")
+	// In case of an etcd cluster, there is no concept of kubernetes node. So we can generate the node Provider ID and set it on machine spec directly
+	if _, ok := machine.Labels[clusterv1.MachineEtcdClusterLabelName]; !ok {
+		// Usually a cloud provider will do this, but there is no docker-cloud provider.
+		// Requeue if there is an error, as this is likely momentary load balancer
+		// state changes during control plane provisioning.
+		remoteClient, err := r.Tracker.GetClient(ctx, client.ObjectKeyFromObject(cluster))
+		if err != nil {
+			return ctrl.Result{}, errors.Wrap(err, "failed to generate workload cluster client")
 		}
-		log.Error(err, "failed to patch the Kubernetes node with the machine providerID")
-		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+		if err := externalMachine.SetNodeProviderID(ctx, remoteClient); err != nil {
+			if errors.As(err, &docker.ContainerNotRunningError{}) {
+				return ctrl.Result{}, errors.Wrap(err, "failed to patch the Kubernetes node with the machine providerID")
+			}
+			log.Error(err, "failed to patch the Kubernetes node with the machine providerID")
+			return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+		}
 	}
 	// Set ProviderID so the Cluster API Machine Controller can pull it
 	providerID := externalMachine.ProviderID()
