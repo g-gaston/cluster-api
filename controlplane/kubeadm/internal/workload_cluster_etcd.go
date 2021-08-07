@@ -111,6 +111,14 @@ func (w *Workload) UpdateEtcdExtraArgsInKubeadmConfigMap(ctx context.Context, ex
 	}, version)
 }
 
+func (w *Workload) UpdateExternalEtcdEndpointsInKubeadmConfigMap(ctx context.Context, endpoints []string, version semver.Version) error {
+	return w.updateClusterConfiguration(ctx, func(c *bootstrapv1.ClusterConfiguration) {
+		if c.Etcd.External != nil {
+			c.Etcd.External.Endpoints = endpoints
+		}
+	}, version)
+}
+
 // RemoveEtcdMemberForMachine removes the etcd member from the target cluster's etcd cluster.
 // Removing the last remaining member of the cluster is not supported.
 func (w *Workload) RemoveEtcdMemberForMachine(ctx context.Context, machine *clusterv1.Machine) error {
