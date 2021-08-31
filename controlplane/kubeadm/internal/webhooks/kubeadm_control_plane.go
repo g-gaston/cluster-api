@@ -161,6 +161,8 @@ func (webhook *KubeadmControlPlane) ValidateUpdate(_ context.Context, oldObj, ne
 	allowedPaths := [][]string{
 		{"metadata", "*"},
 		{spec, kubeadmConfigSpec, "useExperimentalRetryJoin"},
+		{spec, kubeadmConfigSpec, clusterConfiguration, "bottlerocketBootstrap", "*"},
+		{spec, kubeadmConfigSpec, clusterConfiguration, "pause", "*"},
 		{spec, kubeadmConfigSpec, clusterConfiguration, "etcd", "local", "imageRepository"},
 		{spec, kubeadmConfigSpec, clusterConfiguration, "etcd", "local", "imageTag"},
 		{spec, kubeadmConfigSpec, clusterConfiguration, "etcd", "local", "extraArgs"},
@@ -185,6 +187,8 @@ func (webhook *KubeadmControlPlane) ValidateUpdate(_ context.Context, oldObj, ne
 		{spec, kubeadmConfigSpec, joinConfiguration, patches, directory},
 		{spec, kubeadmConfigSpec, joinConfiguration, patches},
 		{spec, kubeadmConfigSpec, joinConfiguration, skipPhases},
+		{spec, kubeadmConfigSpec, joinConfiguration, "bottlerocketBootstrap", "*"},
+		{spec, kubeadmConfigSpec, joinConfiguration, "pause", "*"},
 		{spec, kubeadmConfigSpec, preKubeadmCommands},
 		{spec, kubeadmConfigSpec, postKubeadmCommands},
 		{spec, kubeadmConfigSpec, files},
