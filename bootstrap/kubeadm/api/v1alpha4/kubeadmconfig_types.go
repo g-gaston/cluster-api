@@ -23,7 +23,7 @@ import (
 )
 
 // Format specifies the output format of the bootstrap data
-// +kubebuilder:validation:Enum=cloud-config
+// +kubebuilder:validation:Enum=cloud-config;bottlerocket
 type Format string
 
 const (
