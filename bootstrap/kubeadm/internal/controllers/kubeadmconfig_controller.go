@@ -468,6 +468,7 @@ func (r *KubeadmConfigReconciler) handleClusterNotInitialized(ctx context.Contex
 		bottlerocketConfig = &bottlerocket.BottlerocketConfig{
 			Pause:                                 scope.Config.Spec.ClusterConfiguration.Pause,
 			BottlerocketBootstrap:                 scope.Config.Spec.ClusterConfiguration.BottlerocketBootstrap,
+			BottlerocketAdmin:                     scope.Config.Spec.ClusterConfiguration.BottlerocketAdmin,
 			BottlerocketControl:                   scope.Config.Spec.ClusterConfiguration.BottlerocketControl,
 			BottlerocketCustomHostContainers:      scope.Config.Spec.ClusterConfiguration.BottlerocketHostContainers,
 			BottlerocketCustomBootstrapContainers: scope.Config.Spec.ClusterConfiguration.BottlerocketCustomBootstrapContainers,
@@ -663,6 +664,7 @@ func (r *KubeadmConfigReconciler) joinWorker(ctx context.Context, scope *Scope) 
 		bottlerocketConfig := &bottlerocket.BottlerocketConfig{
 			Pause:                                 scope.Config.Spec.JoinConfiguration.Pause,
 			BottlerocketBootstrap:                 scope.Config.Spec.JoinConfiguration.BottlerocketBootstrap,
+			BottlerocketAdmin:                     scope.Config.Spec.JoinConfiguration.BottlerocketAdmin,
 			BottlerocketControl:                   scope.Config.Spec.JoinConfiguration.BottlerocketControl,
 			BottlerocketCustomHostContainers:      scope.Config.Spec.JoinConfiguration.BottlerocketCustomHostContainers,
 			BottlerocketCustomBootstrapContainers: scope.Config.Spec.JoinConfiguration.BottlerocketCustomBootstrapContainers,
@@ -791,6 +793,7 @@ func (r *KubeadmConfigReconciler) joinControlplane(ctx context.Context, scope *S
 		bottlerocketConfig := &bottlerocket.BottlerocketConfig{
 			Pause:                                 scope.Config.Spec.JoinConfiguration.Pause,
 			BottlerocketBootstrap:                 scope.Config.Spec.JoinConfiguration.BottlerocketBootstrap,
+			BottlerocketAdmin:                     scope.Config.Spec.JoinConfiguration.BottlerocketAdmin,
 			BottlerocketControl:                   scope.Config.Spec.JoinConfiguration.BottlerocketControl,
 			BottlerocketCustomHostContainers:      scope.Config.Spec.JoinConfiguration.BottlerocketCustomHostContainers,
 			BottlerocketCustomBootstrapContainers: scope.Config.Spec.JoinConfiguration.BottlerocketCustomBootstrapContainers,
