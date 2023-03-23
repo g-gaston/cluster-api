@@ -1274,6 +1274,17 @@ spec:
                             description: Bottlerocket holds configuration for certain
                               bottlerocket settings. This is only for bottlerocket.
                             properties:
+                              boot:
+                                description: Boot holds the boot-related settings
+                                  for bottlerocket nodes
+                                properties:
+                                  bootKernelParameters:
+                                    additionalProperties:
+                                      items:
+                                        type: string
+                                      type: array
+                                    type: object
+                                type: object
                               kernel:
                                 description: KernelSettings contains additional kernel
                                   settings for Bottlerocket.
@@ -2160,6 +2171,17 @@ spec:
                             description: Bottlerocket holds configuration for certain
                               bottlerocket settings. This is only for bottlerocket.
                             properties:
+                              boot:
+                                description: Boot holds the boot-related settings
+                                  for bottlerocket nodes
+                                properties:
+                                  bootKernelParameters:
+                                    additionalProperties:
+                                      items:
+                                        type: string
+                                      type: array
+                                    type: object
+                                type: object
                               kernel:
                                 description: KernelSettings contains additional kernel
                                   settings for Bottlerocket.
