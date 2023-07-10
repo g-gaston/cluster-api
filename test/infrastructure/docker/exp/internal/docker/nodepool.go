@@ -219,7 +219,7 @@ func (np *NodePool) addMachine(ctx context.Context) error {
 		}
 	}
 
-	if err := externalMachine.Create(ctx, np.dockerMachinePool.Spec.Template.CustomImage, constants.WorkerNodeRoleValue, np.machinePool.Spec.Template.Spec.Version, labels, np.dockerMachinePool.Spec.Template.ExtraMounts); err != nil {
+	if err := externalMachine.Create(ctx, np.dockerMachinePool.Spec.Template.CustomImage, constants.WorkerNodeRoleValue, np.machinePool.Spec.Template.Spec.Version, labels, np.dockerMachinePool.Spec.Template.ExtraMounts, false); err != nil {
 		return errors.Wrapf(err, "failed to create docker machine with instance name %s", instanceName)
 	}
 	return nil

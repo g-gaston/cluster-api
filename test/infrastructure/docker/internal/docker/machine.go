@@ -192,26 +192,41 @@ func (m *Machine) ContainerImage() string {
 }
 
 // Create creates a docker container hosting a Kubernetes node.
-func (m *Machine) Create(ctx context.Context, image string, role string, version *string, labels map[string]string, mounts []infrav1.Mount) error {
+func (m *Machine) Create(ctx context.Context, image string, role string, version *string, labels map[string]string, mounts []infrav1.Mount, isEtcdMachine bool) error {
 	log := ctrl.LoggerFrom(ctx)
 
 	// Create if not exists.
 	if m.container == nil {
 		var err error
 
-		// Get the KindMapping for the target K8s version.
-		// NOTE: The KindMapping allows to select the most recent kindest/node image available, if any, as well as
-		// provide info about the mode to be used when starting the kindest/node image itself.
-		if version == nil {
-			return errors.New("cannot create a DockerMachine for a nil version")
-		}
+		var kindMapping kind.Mapping
 
-		semVer, err := semver.Parse(strings.TrimPrefix(*version, "v"))
-		if err != nil {
-			return errors.Wrap(err, "failed to parse DockerMachine version")
-		}
+		// External etcd machines do not set a version field in the machine.Spec.Version.
+		// So we are setting a static Kind Mapping with an arbitrary Kubernetes version
+		// and the latest mode. The arbitrary version does not matter since we pass in a
+		// custom Kind node image which will override the Kind image constructed using the
+		// version
+		if isEtcdMachine {
+			kindMapping = kind.Mapping{
+				KubernetesVersion: semver.MustParse("1.27.3"),
+				Mode: kind.Mode0_20,
+				Image: image,
+			}
+		} else {
+			// Get the KindMapping for the target K8s version.
+			// NOTE: The KindMapping allows to select the most recent kindest/node image available, if any, as well as
+			// provide info about the mode to be used when starting the kindest/node image itself.
+			if version == nil {
+					return errors.New("cannot create a DockerMachine for a nil version")
+			}
 
-		kindMapping := kind.GetMapping(semVer, image)
+			semVer, err := semver.Parse(strings.TrimPrefix(*version, "v"))
+			if err != nil {
+				return errors.Wrap(err, "failed to parse DockerMachine version")
+			}
+
+			kindMapping = kind.GetMapping(semVer, image)
+		}
 
 		switch role {
 		case constants.ControlPlaneNodeRoleValue:
