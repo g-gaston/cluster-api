@@ -49,17 +49,20 @@ func (r *Reconciler) reconcileNode(ctx context.Context, cluster *clusterv1.Clust
 		return ctrl.Result{}, err
 	}
 
+	if _, ok := machine.Labels[clusterv1.MachineEtcdClusterLabelName]; ok {
+		// Etcd member Machines do not correspond to Kubernetes v1 Nodes; cannot get k8s node to set nodeRef
+		// This prevents the MachineNodeHealthyCondition from being set in etcd machines, neither true nor false.
+		// It makes sense since etcd machines are not kubernetes nodes and it doesn't present any issues since the
+		// summary ready condition doesn't depend on it.
+		return ctrl.Result{}, nil
+	}
+
 	// Check that the Machine has a valid ProviderID.
 	if machine.Spec.ProviderID == nil || *machine.Spec.ProviderID == "" {
 		log.Info("Waiting for infrastructure provider to report spec.providerID", machine.Spec.InfrastructureRef.Kind, klog.KRef(machine.Spec.InfrastructureRef.Namespace, machine.Spec.InfrastructureRef.Name))
 		conditions.MarkFalse(machine, clusterv1.MachineNodeHealthyCondition, clusterv1.WaitingForNodeRefReason, clusterv1.ConditionSeverityInfo, "")
 		return ctrl.Result{}, nil
-	}
-
-	if _, ok := machine.Labels[clusterv1.MachineEtcdClusterLabelName]; ok {
-		// Etcd member Machines do not correspond to Kubernetes v1 Nodes; cannot get k8s node to set nodeRef
-		return ctrl.Result{}, nil
-	}
+	}	
 
 	remoteClient, err := r.Tracker.GetClient(ctx, util.ObjectKey(cluster))
 	if err != nil {
