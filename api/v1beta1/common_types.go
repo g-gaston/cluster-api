@@ -154,6 +154,11 @@ const (
 	// VariableDefinitionFromInline indicates a patch or variable was defined in the `.spec` of a ClusterClass
 	// rather than from an external patch extension.
 	VariableDefinitionFromInline = "inline"
+
+
+	// SkipControlPlanePauseManagedEtcdAnnotation indicates that the cluster controller should not pause or unpause
+	// the control plane after the managed etcd cluster becomes not-ready/ready.
+	SkipControlPlanePauseManagedEtcdAnnotation = "cluster.x-k8s.io/skip-pause-cp-managed-etcd"
 )
 
 // NodeUninitializedTaint can be added to Nodes at creation by the bootstrap provider, e.g. the
