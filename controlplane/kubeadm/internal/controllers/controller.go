@@ -184,15 +184,28 @@ func (r *KubeadmControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.
 		if err != nil {
 			return ctrl.Result{}, err
 		}
+
+		externalEtcdReady, err := external.IsReady(externalEtcd)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+
+		if !externalEtcdReady {
+			log.Info("Managed external etcd is not ready yet, requeueing", "managedExternalEtcd", klog.KObj(externalEtcd))
+			return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
+		}
+
 		endpoints, found, err := external.GetExternalEtcdEndpoints(externalEtcd)
 		if err != nil {
 			return ctrl.Result{}, errors.Wrapf(err, "failed to get endpoint field from %v", externalEtcd.GetName())
 		}
-		if !found {
-			log.Info("Etcd endpoints not available")
-			return ctrl.Result{Requeue: true}, nil
-		}
 		currentEtcdEndpoints := strings.Split(endpoints, ",")
+
+		if !found || areEndpointsEmpty(currentEtcdEndpoints) {
+			log.Info("Managed external etcd endpoints not available, requeueing")
+			return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
+		}
+
 		sort.Strings(currentEtcdEndpoints)
 		currentKCPEndpoints := kcp.Spec.KubeadmConfigSpec.ClusterConfiguration.Etcd.External.Endpoints
 		if !reflect.DeepEqual(currentEtcdEndpoints, currentKCPEndpoints) {
@@ -292,6 +305,10 @@ func (r *KubeadmControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.
 		return ctrl.Result{Requeue: true}, nil
 	}
 	return res, err
+}
+
+func areEndpointsEmpty(endpoints []string) bool {
+	return len(endpoints) == 0 || len(endpoints) == 1 && endpoints[0] == ""
 }
 
 func patchKubeadmControlPlane(ctx context.Context, patchHelper *patch.Helper, kcp *controlplanev1.KubeadmControlPlane) error {
