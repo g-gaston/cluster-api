@@ -688,7 +688,7 @@ func TestKubeadmControlPlaneReconciler_generateKubeadmConfig(t *testing.T) {
 		recorder:            record.NewFakeRecorder(32),
 	}
 
-	got, err := r.generateKubeadmConfig(ctx, kcp, cluster, spec.DeepCopy())
+	got, err := r.createKubeadmConfig(ctx, kcp, cluster, spec.DeepCopy())
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(got).NotTo(BeNil())
 	g.Expect(got.Name).To(HavePrefix(kcp.Name))

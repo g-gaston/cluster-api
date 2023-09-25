@@ -192,7 +192,7 @@ func (r *KubeadmControlPlaneReconciler) cloneConfigsAndGenerateMachine(ctx conte
 	}
 
 	// Clone the bootstrap configuration
-	bootstrapRef, err := r.generateKubeadmConfig(ctx, kcp, cluster, bootstrapSpec)
+	bootstrapRef, err := r.createKubeadmConfig(ctx, kcp, cluster, bootstrapSpec)
 	if err != nil {
 		conditions.MarkFalse(kcp, controlplanev1.MachinesCreatedCondition, controlplanev1.BootstrapTemplateCloningFailedReason,
 			clusterv1.ConditionSeverityError, err.Error())
@@ -241,26 +241,8 @@ func (r *KubeadmControlPlaneReconciler) cleanupFromGeneration(ctx context.Contex
 	return kerrors.NewAggregate(errs)
 }
 
-func (r *KubeadmControlPlaneReconciler) generateKubeadmConfig(ctx context.Context, kcp *controlplanev1.KubeadmControlPlane, cluster *clusterv1.Cluster, spec *bootstrapv1.KubeadmConfigSpec) (*corev1.ObjectReference, error) {
-	// Create an owner reference without a controller reference because the owning controller is the machine controller
-	owner := metav1.OwnerReference{
-		APIVersion: controlplanev1.GroupVersion.String(),
-		Kind:       kubeadmControlPlaneKind,
-		Name:       kcp.Name,
-		UID:        kcp.UID,
-	}
-
-	bootstrapConfig := &bootstrapv1.KubeadmConfig{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:            names.SimpleNameGenerator.GenerateName(kcp.Name + "-"),
-			Namespace:       kcp.Namespace,
-			Labels:          internal.ControlPlaneMachineLabelsForCluster(kcp, cluster.Name),
-			Annotations:     kcp.Spec.MachineTemplate.ObjectMeta.Annotations,
-			OwnerReferences: []metav1.OwnerReference{owner},
-		},
-		Spec: *spec,
-	}
-
+func (r *KubeadmControlPlaneReconciler) createKubeadmConfig(ctx context.Context, kcp *controlplanev1.KubeadmControlPlane, cluster *clusterv1.Cluster, spec *bootstrapv1.KubeadmConfigSpec) (*corev1.ObjectReference, error) {
+	bootstrapConfig := generateKubeadmConfig(kcp, cluster, spec)
 	if err := r.Client.Create(ctx, bootstrapConfig); err != nil {
 		return nil, errors.Wrap(err, "Failed to create bootstrap configuration")
 	}
@@ -274,6 +256,27 @@ func (r *KubeadmControlPlaneReconciler) generateKubeadmConfig(ctx context.Contex
 	}
 
 	return bootstrapRef, nil
+}
+
+func generateKubeadmConfig(kcp *controlplanev1.KubeadmControlPlane, cluster *clusterv1.Cluster, spec *bootstrapv1.KubeadmConfigSpec) *bootstrapv1.KubeadmConfig {
+	// Create an owner reference without a controller reference because the owning controller is the machine controller
+	owner := metav1.OwnerReference{
+		APIVersion: controlplanev1.GroupVersion.String(),
+		Kind:       kubeadmControlPlaneKind,
+		Name:       kcp.Name,
+		UID:        kcp.UID,
+	}
+
+	return &bootstrapv1.KubeadmConfig{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            names.SimpleNameGenerator.GenerateName(kcp.Name + "-"),
+			Namespace:       kcp.Namespace,
+			Labels:          internal.ControlPlaneMachineLabelsForCluster(kcp, cluster.Name),
+			Annotations:     kcp.Spec.MachineTemplate.ObjectMeta.Annotations,
+			OwnerReferences: []metav1.OwnerReference{owner},
+		},
+		Spec: *spec,
+	}
 }
 
 // updateExternalObject updates the external object with the labels and annotations from KCP.

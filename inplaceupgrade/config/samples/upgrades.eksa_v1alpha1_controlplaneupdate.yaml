@@ -1,0 +1,12 @@
+apiVersion: upgrades.eksa.eks.amazonaws.com/v1alpha1
+kind: ControlPlaneUpdate
+metadata:
+  labels:
+    app.kubernetes.io/name: controlplaneupdate
+    app.kubernetes.io/instance: controlplaneupdate-sample
+    app.kubernetes.io/part-of: eksa
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: eksa
+  name: controlplaneupdate-sample
+spec:
+  # TODO(user): Add fields here

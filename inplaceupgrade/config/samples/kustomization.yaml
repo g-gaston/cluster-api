@@ -1,0 +1,5 @@
+## Append samples of your project ##
+resources:
+- upgrades.eksa_v1alpha1_controlplaneupgrade.yaml
+- upgrades.eksa_v1alpha1_nodeupgrade.yaml
+#+kubebuilder:scaffold:manifestskustomizesamples

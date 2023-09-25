@@ -35,6 +35,10 @@ const (
 	// RollingUpdateStrategyType replaces the old control planes by new one using rolling update
 	// i.e. gradually scale up or down the old control planes and scale up or down the new one.
 	RollingUpdateStrategyType RolloutStrategyType = "RollingUpdate"
+
+	// ExternalStrategyType delegates on an external strategy implementer through a RuntimeWebhook
+	// extension.
+	ExternalStrategyType RolloutStrategyType = "External"
 )
 
 const (
@@ -160,8 +164,8 @@ type RolloutBefore struct {
 // RolloutStrategy describes how to replace existing machines
 // with new ones.
 type RolloutStrategy struct {
-	// Type of rollout. Currently the only supported strategy is
-	// "RollingUpdate".
+	// Type of rollout. Currently the only supported strategies are
+	// "RollingUpdate" and "External".
 	// Default is RollingUpdate.
 	// +optional
 	Type RolloutStrategyType `json:"type,omitempty"`
@@ -170,6 +174,11 @@ type RolloutStrategy struct {
 	// RolloutStrategyType = RollingUpdate.
 	// +optional
 	RollingUpdate *RollingUpdate `json:"rollingUpdate,omitempty"`
+
+	// External update config params. Present only if
+	// RolloutStrategyType = External.
+	// +optional
+	ExternalUpdate *ExternalUpdate `json:"externalUpdate,omitempty"`
 }
 
 // RollingUpdate is used to control the desired behavior of rolling update.
@@ -182,6 +191,15 @@ type RollingUpdate struct {
 	// up immediately when the rolling update starts.
 	// +optional
 	MaxSurge *intstr.IntOrString `json:"maxSurge,omitempty"`
+}
+
+// ExternalUpdate  is used to control the desired behavior of external update.
+type ExternalUpdate struct {
+	// FallbackRolling allows to configure RollingUpdate as a fallback strategy
+	// in case none of the external strategy implementers registered can perform
+	// the required upgrade. If this happen but this field is not configured, the
+	// upgrade process will remain blocked.
+	FallbackRolling *RollingUpdate `json:"fallbackRolling,omitempty"`
 }
 
 // RemediationStrategy allows to define how control plane machine remediation happens.

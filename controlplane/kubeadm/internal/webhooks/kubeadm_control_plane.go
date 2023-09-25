@@ -102,11 +102,20 @@ func defaultRolloutStrategy(rolloutStrategy *controlplanev1.RolloutStrategy) *co
 		if len(rolloutStrategy.Type) == 0 {
 			rolloutStrategy.Type = controlplanev1.RollingUpdateStrategyType
 		}
-		if rolloutStrategy.Type == controlplanev1.RollingUpdateStrategyType {
+
+		switch rolloutStrategy.Type {
+		case controlplanev1.RollingUpdateStrategyType:
 			if rolloutStrategy.RollingUpdate == nil {
 				rolloutStrategy.RollingUpdate = &controlplanev1.RollingUpdate{}
 			}
 			rolloutStrategy.RollingUpdate.MaxSurge = intstr.ValueOrDefault(rolloutStrategy.RollingUpdate.MaxSurge, ios1)
+		case controlplanev1.ExternalStrategyType:
+			if rolloutStrategy.ExternalUpdate != nil && rolloutStrategy.ExternalUpdate.FallbackRolling != nil {
+				rolloutStrategy.ExternalUpdate.FallbackRolling.MaxSurge = intstr.ValueOrDefault(
+					rolloutStrategy.ExternalUpdate.FallbackRolling.MaxSurge,
+					ios1,
+				)
+			}
 		}
 	}
 
@@ -392,15 +401,25 @@ func validateRolloutStrategy(rolloutStrategy *controlplanev1.RolloutStrategy, re
 		return allErrs
 	}
 
-	if rolloutStrategy.Type != controlplanev1.RollingUpdateStrategyType {
+	switch rolloutStrategy.Type {
+	case controlplanev1.RollingUpdateStrategyType:
+		allErrs = append(allErrs, validateRollingStrategy(rolloutStrategy, replicas, pathPrefix)...)
+		case controlplanev1.ExternalStrategyType: 
+	default:
 		allErrs = append(
 			allErrs,
 			field.Required(
 				pathPrefix.Child("type"),
-				"only RollingUpdateStrategyType is supported",
+				"only RollingUpdateStrategyType and External are supported",
 			),
 		)
 	}
+
+	return allErrs
+}
+
+func validateRollingStrategy(rolloutStrategy *controlplanev1.RolloutStrategy, replicas *int32, pathPrefix *field.Path) field.ErrorList {
+	allErrs := field.ErrorList{}
 
 	ios1 := intstr.FromInt(1)
 	ios0 := intstr.FromInt(0)

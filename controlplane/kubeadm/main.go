@@ -53,7 +53,10 @@ import (
 	kubeadmcontrolplanecontrollers "sigs.k8s.io/cluster-api/controlplane/kubeadm/controllers"
 	"sigs.k8s.io/cluster-api/controlplane/kubeadm/internal/etcd"
 	kcpwebhooks "sigs.k8s.io/cluster-api/controlplane/kubeadm/webhooks"
+	"sigs.k8s.io/cluster-api/controlplane/upgrade"
 	"sigs.k8s.io/cluster-api/feature"
+	"sigs.k8s.io/cluster-api/inplaceupgrade"
+	inplacev1 "sigs.k8s.io/cluster-api/inplaceupgrade/api/v1alpha1"
 	"sigs.k8s.io/cluster-api/util/flags"
 	"sigs.k8s.io/cluster-api/version"
 )
@@ -95,6 +98,7 @@ func init() {
 	_ = controlplanev1.AddToScheme(scheme)
 	_ = bootstrapv1.AddToScheme(scheme)
 	_ = apiextensionsv1.AddToScheme(scheme)
+	_ = inplacev1.AddToScheme(scheme)
 }
 
 // InitFlags initializes the flags.
@@ -328,6 +332,18 @@ func setupReconcilers(ctx context.Context, mgr ctrl.Manager) {
 		os.Exit(1)
 	}
 
+	externalUpgrade := &upgrade.ExternalStrategiesExtensionClient{}
+	// This is supposed to be a dynamic registration outside of this manager, so our code
+	// here is agnostic of the particular implementations and we just get a list of webhooks
+	// to call
+	// We are cheating here to finish the poc faster
+	externalUpgrade.Register(
+		inplaceupgrade.NewControlPlaneExternalStrategy(
+			mgr.GetClient(),
+			tracker,
+		),
+	)
+
 	if err := (&kubeadmcontrolplanecontrollers.KubeadmControlPlaneReconciler{
 		Client:              mgr.GetClient(),
 		SecretCachingClient: secretCachingClient,
@@ -335,6 +351,7 @@ func setupReconcilers(ctx context.Context, mgr ctrl.Manager) {
 		WatchFilterValue:    watchFilterValue,
 		EtcdDialTimeout:     etcdDialTimeout,
 		EtcdCallTimeout:     etcdCallTimeout,
+		ExternalUpgrade:     externalUpgrade,
 	}).SetupWithManager(ctx, mgr, concurrency(kubeadmControlPlaneConcurrency)); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "KubeadmControlPlane")
 		os.Exit(1)

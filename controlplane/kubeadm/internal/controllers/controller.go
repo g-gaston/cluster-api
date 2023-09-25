@@ -43,6 +43,7 @@ import (
 	"sigs.k8s.io/cluster-api/controllers/remote"
 	controlplanev1 "sigs.k8s.io/cluster-api/controlplane/kubeadm/api/v1beta1"
 	"sigs.k8s.io/cluster-api/controlplane/kubeadm/internal"
+	"sigs.k8s.io/cluster-api/controlplane/upgrade"
 	expv1 "sigs.k8s.io/cluster-api/exp/api/v1beta1"
 	"sigs.k8s.io/cluster-api/feature"
 	"sigs.k8s.io/cluster-api/internal/contract"
@@ -69,6 +70,10 @@ const (
 // +kubebuilder:rbac:groups=cluster.x-k8s.io,resources=machines;machines/status,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=apiextensions.k8s.io,resources=customresourcedefinitions,verbs=get;list;watch
 
+type ExternalUpgradeExtensions interface {
+	CallUntilAccepted(ctx context.Context, req upgrade.ExternalStrategyRequest) (*upgrade.ExternalStrategyResponse, error)
+}
+
 // KubeadmControlPlaneReconciler reconciles a KubeadmControlPlane object.
 type KubeadmControlPlaneReconciler struct {
 	Client              client.Client
@@ -86,6 +91,8 @@ type KubeadmControlPlaneReconciler struct {
 	managementCluster         internal.ManagementCluster
 	managementClusterUncached internal.ManagementCluster
 	ssaCache                  ssa.Cache
+
+	ExternalUpgrade ExternalUpgradeExtensions
 }
 
 func (r *KubeadmControlPlaneReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager, options controller.Options) error {

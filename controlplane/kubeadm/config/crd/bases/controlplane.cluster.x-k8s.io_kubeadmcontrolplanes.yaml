@@ -2523,6 +2523,30 @@ spec:
                 description: The RolloutStrategy to use to replace control plane machines
                   with new ones.
                 properties:
+                  externalUpdate:
+                    description: External update config params. Present only if RolloutStrategyType
+                      = External.
+                    properties:
+                      fallbackRolling:
+                        description: FallbackRolling allows to configure RollingUpdate
+                          as a fallback strategy in case none of the external strategy
+                          implementers registered can perform the required upgrade.
+                          If this happen but this field is not configured, the upgrade
+                          process will remain blocked.
+                        properties:
+                          maxSurge:
+                            anyOf:
+                            - type: integer
+                            - type: string
+                            description: 'The maximum number of control planes that
+                              can be scheduled above or under the desired number of
+                              control planes. Value can be an absolute number 1 or
+                              0. Defaults to 1. Example: when this is set to 1, the
+                              control plane can be scaled up immediately when the
+                              rolling update starts.'
+                            x-kubernetes-int-or-string: true
+                        type: object
+                    type: object
                   rollingUpdate:
                     description: Rolling update config params. Present only if RolloutStrategyType
                       = RollingUpdate.
@@ -2539,8 +2563,8 @@ spec:
                         x-kubernetes-int-or-string: true
                     type: object
                   type:
-                    description: Type of rollout. Currently the only supported strategy
-                      is "RollingUpdate". Default is RollingUpdate.
+                    description: Type of rollout. Currently the only supported strategies
+                      are "RollingUpdate" and "External". Default is RollingUpdate.
                     type: string
                 type: object
               version:

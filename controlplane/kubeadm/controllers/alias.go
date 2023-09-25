@@ -39,6 +39,8 @@ type KubeadmControlPlaneReconciler struct {
 
 	// WatchFilterValue is the label value used to filter events prior to reconciliation.
 	WatchFilterValue string
+
+	ExternalUpgrade kubeadmcontrolplanecontrollers.ExternalUpgradeExtensions
 }
 
 // SetupWithManager sets up the reconciler with the Manager.
@@ -50,5 +52,6 @@ func (r *KubeadmControlPlaneReconciler) SetupWithManager(ctx context.Context, mg
 		EtcdDialTimeout:     r.EtcdDialTimeout,
 		EtcdCallTimeout:     r.EtcdCallTimeout,
 		WatchFilterValue:    r.WatchFilterValue,
+		ExternalUpgrade:     r.ExternalUpgrade,
 	}).SetupWithManager(ctx, mgr, options)
 }

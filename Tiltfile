@@ -99,6 +99,7 @@ providers = {
             "internal",
             "../../go.mod",
             "../../go.sum",
+            "../../inplaceupgrade",
         ],
         "label": "KCP",
     },
