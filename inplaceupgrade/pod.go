@@ -15,17 +15,17 @@ const (
 func containersForUpgrade(image, nodeName string, kubeadmUpgradeCommand ...string) []corev1.Container {
 	return []corev1.Container{
 		copierContainer(image),
-		nsenterContainer("containerd-upgrader", upgradeScript, "upgrade_containerd"),
-		nsenterContainer("cni-plugins-upgrader", upgradeScript, "cni_plugins"),
-		nsenterContainer("kubeadm-upgrader", append([]string{upgradeScript}, kubeadmUpgradeCommand...)...),
+		nsenterContainer("containerd-upgrader", image, upgradeScript, "upgrade_containerd"),
+		nsenterContainer("cni-plugins-upgrader", image, upgradeScript, "cni_plugins"),
+		nsenterContainer("kubeadm-upgrader", image, append([]string{upgradeScript}, kubeadmUpgradeCommand...)...),
 		drainerContainer(image, nodeName),
-		nsenterContainer("kubelet-kubectl-upgrader", upgradeScript, "kubelet_and_kubectl"),
+		nsenterContainer("kubelet-kubectl-upgrader", image, upgradeScript, "kubelet_and_kubectl"),
 		uncordonContainer(image, nodeName),
 	}
 }
 
-func printAndCleanupContainer() corev1.Container {
-	return nsenterContainer("post-upgrade-status", upgradeScript, "print_status_and_cleanup")
+func printAndCleanupContainer(image string) corev1.Container {
+	return nsenterContainer(image, "post-upgrade-status", upgradeScript, "print_status_and_cleanup")
 }
 
 func upgradePod(nodeName string) *corev1.Pod {
@@ -74,16 +74,16 @@ func copierContainer(image string) corev1.Container {
 	}
 }
 
-func nsenterContainer(containerName string, command ...string) corev1.Container {
-	c := baseNsenterContainer()
+func nsenterContainer(containerName, image string, command ...string) corev1.Container {
+	c := baseNsenterContainer(image)
 	c.Name = containerName
 	c.Args = append(c.Args, command...)
 	return c
 }
 
-func baseNsenterContainer() corev1.Container {
+func baseNsenterContainer(image string) corev1.Container {
 	return corev1.Container{
-		Image:   "public.ecr.aws/eks-distro-build-tooling/eks-distro-minimal-base-nsenter:latest.2",
+		Image:   image,
 		Command: []string{"nsenter"},
 		Args: []string{
 			"--target",

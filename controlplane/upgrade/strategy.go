@@ -8,6 +8,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	ctrl "sigs.k8s.io/controller-runtime"
 
 	"sigs.k8s.io/cluster-api/util/collections"
 )
@@ -18,10 +19,10 @@ type ExternalStrategyRequest struct {
 	Cluster                *clusterv1.Cluster
 	ControlPlane           *corev1.ObjectReference
 	MachinesRequireUpgrade collections.Machines
-	NewMachine             *NewMachineSpec
+	NewMachine             *MachineSpec
 }
 
-type NewMachineSpec struct {
+type MachineSpec struct {
 	Machine         *clusterv1.Machine
 	BootstrapConfig *unstructured.Unstructured
 	InfraMachine    *unstructured.Unstructured
@@ -47,6 +48,7 @@ func (c *ExternalStrategiesExtensionClient) Register(extensions ...ExternalStrat
 }
 
 func (c *ExternalStrategiesExtensionClient) CallUntilAccepted(ctx context.Context, req ExternalStrategyRequest) (*ExternalStrategyResponse, error) {
+	logger := ctrl.LoggerFrom(ctx)
 	for _, e := range c.extensions {
 		resp, err := e.Call(ctx, req)
 		if err != nil {
@@ -55,6 +57,8 @@ func (c *ExternalStrategiesExtensionClient) CallUntilAccepted(ctx context.Contex
 		if resp.Accepted {
 			return resp, nil
 		}
+
+		logger.Info("Control plane request not updated", "reason", resp.Reason)
 	}
 
 	return nil, nil

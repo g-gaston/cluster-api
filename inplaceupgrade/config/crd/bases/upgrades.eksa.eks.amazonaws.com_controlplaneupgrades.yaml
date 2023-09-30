@@ -172,6 +172,12 @@ spec:
                     type: string
                 type: object
                 x-kubernetes-map-type: atomic
+              coreDNSVersion:
+                type: string
+              etcdVersion:
+                type: string
+              kubeadmClusterConfig:
+                type: string
               machinesRequireUpgrade:
                 items:
                   description: "ObjectReference contains enough information to let
@@ -251,6 +257,7 @@ spec:
             required:
             - cluster
             - controlPlane
+            - kubeadmClusterConfig
             - machinesRequireUpgrade
             - newVersion
             type: object

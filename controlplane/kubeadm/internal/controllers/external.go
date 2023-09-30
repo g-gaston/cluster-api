@@ -70,7 +70,7 @@ func (r *KubeadmControlPlaneReconciler) buildExternalUpgradeRequest(
 		Cluster:                controlPlane.Cluster,
 		ControlPlane:           objToRef(controlPlane.KCP),
 		MachinesRequireUpgrade: machinesRequireUpgrade,
-		NewMachine: &upgrade.NewMachineSpec{
+		NewMachine: &upgrade.MachineSpec{
 			Machine:         newMachineSpec.machine,
 			BootstrapConfig: &unstructured.Unstructured{Object: rawKubeadmConfig},
 			InfraMachine:    newMachineSpec.infraMachine,
@@ -149,5 +149,6 @@ func objToRef(obj client.Object) *corev1.ObjectReference {
 		Namespace:       obj.GetNamespace(),
 		Name:            obj.GetName(),
 		ResourceVersion: obj.GetResourceVersion(),
+		UID:             obj.GetUID(),
 	}
 }

@@ -2,9 +2,70 @@ package inplaceupgrade
 
 import (
 	"encoding/json"
+	"fmt"
+	"strings"
 
 	jsonpatch "github.com/evanphx/json-patch"
+	"k8s.io/klog/v2"
+	"sigs.k8s.io/cluster-api/controlplane/upgrade"
 )
+
+func listNotAllowedChanges(spec *upgrade.MachineSpec, actual, allowed *machineSpedChanges) []string {
+	var list []string
+	if notAllowed := notAllowedChanges(actual.machinePaths, allowed.machinePaths); notAllowed != "" {
+		list = append(list, fmt.Sprintf("Changes for machine %s are not supported: %s", spec.Machine.Name, notAllowed))
+	}
+	if notAllowed := notAllowedChanges(actual.bootstrapConfigPaths, allowed.bootstrapConfigPaths); notAllowed != "" {
+		list = append(list, fmt.Sprintf("Changes for bootstrapConfig %s are not supported: %s", klog.KObj(spec.BootstrapConfig), notAllowed))
+	}
+	if notAllowed := notAllowedChanges(actual.infraMachinePaths, allowed.infraMachinePaths); notAllowed != "" {
+		list = append(list, fmt.Sprintf("Changes for infraMachine %s are not supported: %s", klog.KObj(spec.InfraMachine), notAllowed))
+	}
+
+	return list
+}
+
+type machineSpedChanges struct {
+	machinePaths         [][]string
+	infraMachinePaths    [][]string
+	bootstrapConfigPaths [][]string
+}
+
+func computeAllChanges(old, new *upgrade.MachineSpec) (*machineSpedChanges, error) {
+	machineChanges, err := changedPaths(old.Machine.Spec, new.Machine.Spec)
+	if err != nil {
+		return nil, err
+	}
+
+	bootstrapChanges, err := changedPaths(old.BootstrapConfig.Object["spec"], new.BootstrapConfig.Object["spec"])
+	if err != nil {
+		return nil, err
+	}
+
+	infraChanges, err := changedPaths(old.InfraMachine.Object["spec"], new.InfraMachine.Object["spec"])
+	if err != nil {
+		return nil, err
+	}
+
+	return &machineSpedChanges{
+		machinePaths:         machineChanges,
+		infraMachinePaths:    infraChanges,
+		bootstrapConfigPaths: bootstrapChanges,
+	}, nil
+}
+
+func notAllowedChanges(actual, allowed [][]string) string {
+	notAllowed := filterAllowed(actual, allowed)
+	if len(notAllowed) == 0 {
+		return ""
+	}
+
+	paths := make([]string, 0, len(notAllowed))
+	for _, p := range notAllowed {
+		paths = append(paths, strings.Join(p, "."))
+	}
+	return strings.Join(paths, "|")
+}
 
 func notAllowedPathChanged(old, new any, allowedPaths [][]string) (paths [][]string, err error) {
 	changedPaths, err := changedPaths(old, new)
@@ -12,7 +73,12 @@ func notAllowedPathChanged(old, new any, allowedPaths [][]string) (paths [][]str
 		return nil, err
 	}
 
-	for _, path := range changedPaths {
+	return filterAllowed(changedPaths, allowedPaths), nil
+}
+
+func filterAllowed(changed, allowedPaths [][]string) [][]string {
+	var paths [][]string
+	for _, path := range changed {
 		// Ignore paths that are empty
 		if len(path) == 0 {
 			continue
@@ -22,7 +88,7 @@ func notAllowedPathChanged(old, new any, allowedPaths [][]string) (paths [][]str
 		}
 	}
 
-	return paths, nil
+	return paths
 }
 
 func changedPaths(old, new any) (changedPaths [][]string, err error) {

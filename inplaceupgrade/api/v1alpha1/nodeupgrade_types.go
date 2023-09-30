@@ -25,9 +25,10 @@ import (
 
 // NodeUpgradeSpec defines the desired state of NodeUpgrade
 type NodeUpgradeSpec struct {
-	Machine   corev1.ObjectReference  `json:"machine"`
-	Node       corev1.ObjectReference  `json:"node"`
-	NewVersion KubernetesVersionBundle `json:"newVersion"`
+	Machine     corev1.ObjectReference  `json:"machine"`
+	Node        corev1.ObjectReference  `json:"node"`
+	NewVersion  KubernetesVersionBundle `json:"newVersion"`
+	EtcdVersion *string                 `json:"etcdVersion,omitempty"`
 }
 
 // NodeUpgradeStatus defines the observed state of NodeUpgrade

@@ -27,6 +27,9 @@ type ControlPlaneUpgradeSpec struct {
 	ControlPlane           corev1.ObjectReference   `json:"controlPlane"`
 	MachinesRequireUpgrade []corev1.ObjectReference `json:"machinesRequireUpgrade"`
 	NewVersion             KubernetesVersionBundle  `json:"newVersion"`
+	EtcdVersion            *string                  `json:"etcdVersion,omitempty"`
+	CoreDNSVersion         *string                  `json:"coreDNSVersion,omitempty"`
+	KubeadmClusterConfig   string                   `json:"kubeadmClusterConfig"`
 }
 
 type KubernetesVersionBundle struct {

@@ -54,6 +54,8 @@ spec:
           spec:
             description: NodeUpgradeSpec defines the desired state of NodeUpgrade
             properties:
+              etcdVersion:
+                type: string
               machine:
                 description: "ObjectReference contains enough information to let you
                   inspect or modify the referred object. --- New uses of this type
