@@ -17,6 +17,7 @@ limitations under the License.
 package external
 
 import (
+	"fmt"
 	"testing"
 
 	. "github.com/onsi/gomega"
@@ -25,16 +26,16 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 )
 
-var (
-	ctx = ctrl.SetupSignalHandler()
-)
+var ctx = ctrl.SetupSignalHandler()
 
 const (
 	testClusterName = "test-cluster"
@@ -322,4 +323,101 @@ func TestCloneTemplateMissingSpecTemplate(t *testing.T) {
 		ClusterName: testClusterName,
 	})
 	g.Expect(err).To(HaveOccurred())
+}
+
+func TestIsV1alpha4NotFoundFromDiscoveryError(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{
+			name: "the error we are looking for",
+			err: &apiutil.ErrResourceDiscoveryFailed{
+				schema.GroupVersion{
+					Group:   "infrastructure.cluster.x-k8s.io",
+					Version: "v1alpha4",
+				}: apierrors.NewNotFound(schema.GroupResource{}, "infrastructure.cluster.x-k8s.io/v1alpha4"),
+			},
+			want: true,
+		},
+		{
+			name: "the error we are looking for but wrapped",
+			err: fmt.Errorf("failed to get restmapping: %w",
+				&apiutil.ErrResourceDiscoveryFailed{
+					schema.GroupVersion{
+						Group:   "infrastructure.cluster.x-k8s.io",
+						Version: "v1alpha4",
+					}: apierrors.NewNotFound(schema.GroupResource{}, "infrastructure.cluster.x-k8s.io/v1alpha4"),
+				},
+			),
+			want: true,
+		},
+		{
+			name: "v1alpha4 not found with different group",
+			err: &apiutil.ErrResourceDiscoveryFailed{
+				schema.GroupVersion{
+					Group:   "different.group",
+					Version: "v1alpha4",
+				}: apierrors.NewNotFound(schema.GroupResource{}, "different.group/v1alpha4"),
+			},
+			want: false,
+		},
+		{
+			name: "infrastructure.cluster.x-k8s.io not found error with different version",
+			err: &apiutil.ErrResourceDiscoveryFailed{
+				schema.GroupVersion{
+					Group:   "infrastructure.cluster.x-k8s.io",
+					Version: "differentkind",
+				}: apierrors.NewNotFound(schema.GroupResource{}, "infrastructure.cluster.x-k8s.io/differentkind"),
+			},
+			want: false,
+		},
+		{
+			name: "infrastructure.cluster.x-k8s.io/v1alpha4 but different error that is not NotFound",
+			err: &apiutil.ErrResourceDiscoveryFailed{
+				schema.GroupVersion{
+					Group:   "infrastructure.cluster.x-k8s.io",
+					Version: "v1alpha4",
+				}: errors.New("some other error"),
+			},
+			want: false,
+		},
+		{
+			name: "plain not found error",
+			err: &apierrors.StatusError{
+				ErrStatus: metav1.Status{
+					Reason: metav1.StatusReasonNotFound,
+				},
+			},
+			want: false,
+		},
+		{
+			name: "infrastructure.cluster.x-k8s.io/v1alpha4 not found error",
+			err: &apierrors.StatusError{
+				ErrStatus: metav1.Status{
+					Reason:  metav1.StatusReasonNotFound,
+					Message: "infrastructure.cluster.x-k8s.io/v1alpha4",
+				},
+			},
+			want: false,
+		},
+		{
+			name: "not error",
+			err:  nil,
+			want: false,
+		},
+		{
+			name: "other error",
+			err:  errors.New("some other error"),
+			want: false,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			g := NewWithT(t)
+			g.Expect(isV1alpha4NotFoundFromDiscoveryError(test.err)).To(Equal(test.want))
+		})
+	}
 }

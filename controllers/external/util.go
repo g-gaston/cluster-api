@@ -19,13 +19,18 @@ package external
 import (
 	"context"
 	"strings"
+	"syscall"
+	"time"
 
 	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apiserver/pkg/storage/names"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 )
@@ -39,11 +44,25 @@ func Get(ctx context.Context, c client.Reader, ref *corev1.ObjectReference, name
 	obj.SetAPIVersion(ref.APIVersion)
 	obj.SetKind(ref.Kind)
 	obj.SetName(ref.Name)
+	obj.SetNamespace(namespace)
 	key := client.ObjectKey{Name: obj.GetName(), Namespace: namespace}
-	if err := c.Get(ctx, key, obj); err != nil {
+	if err := c.Get(ctx, key, obj); isV1alpha4NotFoundFromDiscoveryError(err) {
+		logger := log.FromContext(ctx)
+		logger.Error(err, "Client RESTMapper returned an error from an invalid cache referencing infrastructure.cluster.x-k8s.io/v1alpha4, exiting the program to force a new cache to be built")
+		time.Sleep(time.Second)
+		syscall.Kill(syscall.Getpid(), syscall.SIGINT)
+	} else if err != nil {
 		return nil, errors.Wrapf(err, "failed to retrieve %s external object %q/%q", obj.GetKind(), key.Namespace, key.Name)
 	}
 	return obj, nil
+}
+
+func isV1alpha4NotFoundFromDiscoveryError(err error) bool {
+	discoverFailedErr := &apiutil.ErrResourceDiscoveryFailed{}
+	noResourceMatchErr := &meta.NoResourceMatchError{}
+	return errors.As(err, &discoverFailedErr) &&
+		errors.As(err, &noResourceMatchErr) && // This is the error that ErrResourceDiscoveryFailed will unwrap when the original error is NotFound.
+		strings.Contains(err.Error(), "infrastructure.cluster.x-k8s.io/v1alpha4")
 }
 
 // Delete uses the client and reference to delete an external, unstructured object.
