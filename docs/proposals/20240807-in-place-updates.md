@@ -209,10 +209,6 @@ sequenceDiagram
     Operator->>+apiserver: Make changes to KCP
     apiserver->>+capi: Notify changes
     apiserver->>-Operator: OK
-    loop For all External Updaters
-        capi->>+hook: Can update?
-        hook->>capi: Supported changes
-    end
     capi->>capi: Decide Update Strategy
     loop For all machine
         capi->>apiserver: Mark Machine as pending and set UpToDate condition
@@ -220,6 +216,7 @@ sequenceDiagram
         loop For all External Updaters
             mach->>hook: Run updater
         end
+        mach->>apiserver: Validate Machine diff
         mach->>apiserver: Mark Machine as Done
         capi->>capi: Set UpToDate condition
     end
@@ -227,12 +224,11 @@ sequenceDiagram
 
 When configured, external updates will, roughly, follow these steps:
 1. CP/MD Controller: detect an update is required.
-2. CP/MD Controller: query defined update extensions, and based on the response decides if an update should happen in-place.
-3. CP/MD Controller: mark machines as pending using `sigs.k8s.io/cluster-api/internal/hooks.MarkAsPending()` function to track that updaters should be called.
-4. CP/MD Controller: set `UpToDate` condition on machines to `False`.
-5. Machine Controller: invoke all registered updaters, sequentially, one by one.
-6. Machine Controller: once updaters finish use `sigs.k8s.io/cluster-api/internal/hooks.MarkAsDone()` to mark machine as done updating.
-7. CP/MD Controller: set `UpToDate` condition on machines to `True`.
+2. CP/MD Controller: mark machines as pending using `sigs.k8s.io/cluster-api/internal/hooks.MarkAsPending()` function to track that updaters should be called.
+3. CP/MD Controller: set `UpToDate` condition on machines to `False`.
+4. Machine Controller: invoke all registered updaters, sequentially, one by one.
+5. Machine Controller: once updaters finish use `sigs.k8s.io/cluster-api/internal/hooks.MarkAsDone()` to mark machine as done updating.
+6. CP/MD Controller: set `UpToDate` condition on machines to `True`.
 
 The following sections dive deep into these steps, zooming in into the different component interactions and defining how the main error cases are handled.
 
@@ -252,10 +248,12 @@ sequenceDiagram
     Operator->>+apiserver: make changes to CP/MD
     apiserver->>+capi: Notify changes
     apiserver->>-Operator: OK
-    capi->>+hook: Can update?
-    hook->>capi: Set of changes
-    capi->>+hook2: Can update?
-    hook2->>capi: Set of changes
+    capi->>+hook: Run updater
+    hook->>apiserver: Set of changes
+    hook->>capi: Status response
+    capi->>+hook2: Run updater
+    hook2->>apiserver: Set of changes
+    hook->>capi: Status response
     alt all changes covered?
         capi->>apiserver: Decide Update Strategy
     else
@@ -269,7 +267,7 @@ sequenceDiagram
 
 Both `KCP` and `MachineDeployment` controllers follow a similar pattern around updates, they first detect if an update is required and then based on the configured strategy follow the appropiate update logic (note that today there is only one valid strategy, `RollingUpdate`).
 
-With `InPlaceUpdates` feature gate enabled, CAPI controllers will compute the set of desired changes and iterate over the registered external updaters, requesting through the Runtime Hook the set of changes each updater can handle. The changes supported by an updater can be the complete set of desired changes, a subset of them or an empty set, signaling it cannot handle any of the desired changes.
+With `InPlaceUpdates` feature gate enabled, CAPI controllers will compute the set of desired changes and iterate over the registered external updaters, requesting through the Runtime Hook the desired objects with changes each updater can handle. The changes supported by an updater can be the complete set of desired changes, a subset of them or an empty set. All remainders are evaluated after hook execution.
 
 If any updater can handle the desired then CAPI will determine that the update can be performed using the external strategy. 
 
@@ -437,21 +435,17 @@ sequenceDiagram
     apiserver->>+capi: Notify changes
     apiserver->>-Operator: OK
     loop For 3 KCP Machines
-        capi->>+hook2: Can update [spec.version,<br>clusterConfiguration.kubernetesVersion]?
-        hook2->>capi: I can update []
-        capi->>+hook: Can update [spec.version,<br>clusterConfiguration.kubernetesVersion]?
-        hook->>capi: I can update [spec.version,<br>clusterConfiguration.kubernetesVersion]
-        capi->>capi: Decide Update Strategy
         capi->>apiserver: Mark Machine as pending and set UpToDate condition
-        apiserver->>mach: Notify changes
-        mach->>hook: Run update in<br> in Machine
-        hook->>mach: In progress
+        capi->>+hook2: Update spec.version,<br>clusterConfiguration.kubernetesVersion
+        hook2->>capi: Done
+        capi->>+hook: Update spec.version,<br>clusterConfiguration.kubernetesVersion
         hook->>machines: Update packages and<br>run kubeadm upgrade 1.31
         machines->>hook: Done
-        mach->>hook: Run update in<br> in Machine
-        hook->>mach: Done
+        hook->>apiserver: Update machine
+        hook->>capi: Done
+        capi->>apiserver: Evaluate diff
         mach->>apiserver: Mark Machine as done
-        capi->>apiserver: Set UpToDate condition
+        capi->>apiserver: Set UpToDate condition to True
     end
 ```
 
@@ -471,49 +465,6 @@ spec:
 ```
 
 The KCP computes the difference between the current CP machines (plus bootstrap config and infra machine) and their desired state and detects a difference for the machine `spec.version` and for the KubeadmConfig `spec.clusterConfiguration.kubernetesVersion`. It then starts calling the external update extensions to see if they can handle these changes.
-
-First, it makes a request to the `vsphere-vm-memory-update/CanUpdateMachine` endpoint of the first update extension registered, the `vsphere-vm-memory-update` extension:
-
-```json
-{
-    "desiredMachine": {...},
-    "desiredBootstrapConfig": {...},
-    "desiredInfraMachine": {...},
-    "changes": ["machine.spec.version", "bootstrap.spec.clusterConfiguration.kubernetesVersion"],
-}
-```
-
-The `vsphere-vm-memory-update` extension does not support any or the required changes, so it responds with the following message declaring that if does not accept any of the requrested changes:
-
-```json
-{
-    "error": null,
-    "acceptedChanges": [],
-}
-```
-
-Given that there are still changes not covered, KCP continue with the next update extension, making the same request to the `kcp-version-upgrade/CanUpdateMachine` endpoint of the `kcp-version-upgrade` extension:
-
-
-```json
-{
-    "desiredMachine": {...},
-    "desiredBootstrapConfig": {...},
-    "desiredInfraMachine": {...},
-    "changes": ["machine.spec.version", "bootstrap.spec.clusterConfiguration.kubernetesVersion"],
-}
-```
-
-The `kcp-version-upgrade` extension detects that this is a KCP machine, verifies that the changes only require a kubernetes version upgrade, and responds:
-
-```json
-{
-    "error": null,
-    "acceptedChanges": ["machine.spec.version", "bootstrap.spec.clusterConfiguration.kubernetesVersion"],
-}
-```
-
-Now that the KCP knows how to cover all desired changes, it proceeds to mark the first selected KCP machine for update. It sets the pending hook annotation and condition on the machine, which is the signal for the Machine controller to treat this changes differently (as an external update).
 
 ```diff
 apiVersion: cluster.x-k8s.io/v1beta1
@@ -540,12 +491,32 @@ status:
 +   type: UpToDate
 ```
 
-These changes are observed by the Machine controller. Then it call all updaters. To trigger the updater, it calls the `kcp-version-upgrade/UpdateMachine` endpoint:
+It updates the `UpToDate` condition to `False` to reflect beginning of the update procedure, and sets the pending hook annotation and condition on the machine, which is the signal for the Machine controller to treat this changes differently (as an external update).
+
+First, it makes a request to the `vsphere-vm-memory-update/UpdateMachine` endpoint of the first update extension registered, the `vsphere-vm-memory-update` extension:
 
 ```json
 {
-    "desiredMachine": {...},
-    "desiredBootstrapConfig": {...},
+    "desiredMachine": {...}, // changes to machine.spec.version
+    "desiredBootstrapConfig": {...}, // changes to bootstrap.spec.clusterConfiguration.kubernetesVersion
+    "desiredInfraMachine": {...},
+}
+```
+
+The `vsphere-vm-memory-update` extension does not support any or the required changes, so it responds with `Done` status declaring that performed all requrested changes on its behalf:
+
+```json
+{
+    "status": "Done",
+}
+```
+
+KCP will continue with the next update extension, evaluating the state and making the same request to the `kcp-version-upgrade/UpdateMachine` endpoint of the `kcp-version-upgrade` extension:
+
+```json
+{
+    "desiredMachine": {...}, // changes to machine.spec.version remaining
+    "desiredBootstrapConfig": {...}, // changes to bootstrap.spec.clusterConfiguration.kubernetesVersion remaining
     "desiredInfraMachine": {...},
 }
 ```
@@ -560,6 +531,15 @@ When the `kcp-version-upgrade` extension receives the request, it verifies it ca
 }
 ```
 
+After some repetitive attempts, followed by update of the `Machine` and `BootstrapConfig` versions in the cluster, the `kcp-version-upgrade` responds with:
+
+```json
+{
+    "error": null,
+    "status": "Done",
+}
+```
+
 The Machine controller then sends a simillar request to `vsphere-vm-memory-update/UpdateMachine` endpoint, since this extension has not been able to cover any of the changes, it responds with the `Done` (machine controller doesn't need to know if 
 the update was accepted or rejected):
 
@@ -570,26 +550,7 @@ the update was accepted or rejected):
 }
 ```
 
-The Machine controller then requeues the reconcile request for this Machine for 5 minutes later. On the next reconciliation it repeats the request to the `kcp-version-upgrade/UpdateMachine` endpoint:
-
-```json
-{
-    "desiredMachine": {...},
-    "desiredBootstrapConfig": {...},
-    "desiredInfraMachine": {...},
-}
-```
-
-The `kcp-version-upgrade` which has tracked the upgrade process reported by the agent, responds:
-
-```json
-{
-    "error": null,
-    "status": "Done"
-}
-```
-
-The Machine controller then removes the annotation:
+Since all hooks have reached a final state, the Machine controller then removes the annotation:
 
 ```diff
 apiVersion: cluster.x-k8s.io/v1beta1
@@ -613,7 +574,9 @@ status:
     type: UpToDate
 ```
 
-On the next KCP reconciliation, it detects that this machine doesn't have any pending hooks and sets the `UpToDate` condition to `True`.
+Now that the KCP in-place upgrader performed all desired changes, CAPI proceeds with validation of changes. The Machine controller evaluates the diff between desired and exising object from the cluster, and finds no remaining changes.
+
+On the next KCP reconciliation, it detects that this machine doesn't have any pending hooks or difference between desired state and sets the `UpToDate` condition to `True`.
 
 ```diff
 apiVersion: cluster.x-k8s.io/v1beta1
@@ -659,8 +622,6 @@ sequenceDiagram
     Operator->>+apiserver: Update memory field in<br> VsphereMachineTemplate
     apiserver->>+capi: Notify changes
     apiserver->>-Operator: OK
-    capi->>+hook: Can update [spec.memoryMiB]?
-        hook->>capi: I can update [spec.memoryMiB]
     capi->>capi: Decide Update Strategy
     capi->>apiserver: Create new MachineSet
     loop For all Machines
@@ -718,24 +679,23 @@ The `vsphere-vm-memory-update` extension informs that can cover required request
 {
     "desiredMachine": {...},
     "desiredBootstrapConfig": {...},
-    "desiredInfraMachine": {...},
-    "changes": ["infraMachine.spec.memoryMiB"],
+    "desiredInfraMachine": {...}, // includes changes to infraMachine.spec.memoryMiB
 }
 ```
 
 ```json
 {
     "error": null,
-    "acceptedChanges": ["infraMachine.spec.memoryMiB"],
+    "status": "Done",
 }
 ```
 
-The request is also made to `kcp-version-upgrade` but it responds with an empty array, indicating it cannot handle any of the changes:
+The request is also made to `kcp-version-upgrade` but since it does not need anything to do, it responds with `Done` status, indicating it is no longer blocking:
 
 ```json
 {
     "error": null,
-    "acceptedChanges": [],
+    "status": "Done",
 }
 ```
 
@@ -810,10 +770,11 @@ sequenceDiagram
     Operator->>+apiserver: Update template field in<br> VsphereMachineTemplate
     apiserver->>+capi: Notify changes
     apiserver->>-Operator: OK
-    capi->>+hook: Can update [spec.template]?
-        hook->>capi: I can update []
-    capi->>+hook2: Can update [spec.template]?
-        hook2->>capi: I can update []
+    capi->>+hook: Update spec.template
+        hook->>capi: Done
+    capi->>+hook2: Update spec.template
+        hook2->>capi: Done
+    capi->>apiserver: Evaluate diff with template, changes remaining
     capi->>apiserver: Create new MachineSet
     loop For all Machines
         capi->>apiserver: Replace machines
@@ -860,15 +821,14 @@ Both the `kcp-version-upgrade` and the `vsphere-vm-memory-update` extensions inf
 {
     "desiredMachine": {...},
     "desiredBootstrapConfig": {...},
-    "desiredInfraMachine": {...},
-    "changes": ["infraMachine.spec.template"],
+    "desiredInfraMachine": {...}, // changes to infraMachine.spec.template
 }
 ```
 
 ```json
 {
     "error": null,
-    "acceptedChanges": [],
+    "status": "Done",
 }
 ```
 
@@ -900,7 +860,7 @@ Since the fallback to machine replacement is a default strategy and always enabl
 
 ##### Response
 > Requirements:
-> * Result: [Success/Error/InProgress]
+> * Result: [Done/Error/InProgress]
 > * Retry in X seconds
 
 ### Security Model
