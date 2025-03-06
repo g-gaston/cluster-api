@@ -318,6 +318,7 @@ the external updaters.
 ### KCP updates
 
 ```mermaid
+sequenceDiagram
 box Management Cluster
     participant apiserver as kube-api server
     participant capi as KCP controller
@@ -333,8 +334,8 @@ loop For all machines
     capi->>apiserver: Mark Machine as pending, update spec
     apiserver->>mach: Notify changes
     mach->>apiserver: Set UpToDate condition to False
-    loop For all External Updaters
-        mach->>hook: Run updater
+    loop For each External Updater
+        mach->>hook: Run until completion
     end
     mach->>apiserver: Mark Hooks in Machine as Done
     mach->>apiserver: Set UpToDate condition to True
@@ -352,8 +353,8 @@ box Management Cluster
     participant apiserver as kube-api server
     participant capi as CAPI
     participant mach as Machine Controller
-    participant hook as External updater 1
-    participant hook2 as External updater 2
+    participant hook as External updater
+    participant hook1 as Other external updaters
 end
 
 box Workload Cluster
@@ -364,10 +365,23 @@ capi->>apiserver: Decide Update Strategy
 capi->>apiserver: Mark Machine as pending, update spec
 apiserver->>mach: Notify changes
 mach->>hook: Start update
-hook->>infra: Update components
 loop For all External Updaters
-    mach->>hook: finished?
+  mach->>hook: call UpdateMachine
+  hook->>infra: Update components
+  alt is pending
     hook->>mach: try in X secs
+    Note over hook,mach: Retry loop
+  else is done
+    hook->>mach: Done
+  end
+  mach->>hook1: call UpdateMachine
+  hook1->>infra: Update components
+  alt is pending
+    hook1->>mach: try in X secs
+    Note over hook1,mach: Retry loop
+  else is done
+    hook1->>mach: Done
+  end
 end
 mach->>apiserver: Mark Hooks in Machine as Done
 mach->>apiserver: Set UpToDate condition to True
@@ -381,7 +395,7 @@ The controller will trigger updaters by hitting another RuntimeHook endpoint (eg
 
 CAPI expects the `/UpdateMachine` endpoint of an updater to be idempotent: for the same Machine with the same spec, the endpoint can be called any number of times (before and after it completes), and the end result should be the same. CAPI guarantees that once an `/UpdateMachine` endpoint has been called once, it won't change the Machine spec until the update reaches a terminal state.
 
-Once the update completes, the Machine controller will mark machine as done. If the update fails, this will be reflected in the Machine status.
+Once all of the updaters are complete, the Machine controller will mark machine as done. If the update fails, this will be reflected in the Machine status.
 
 From this point on, the `KCP` or `MachineDeployment` controller will take over and set the `UpToDate` condition to `True`.
 
