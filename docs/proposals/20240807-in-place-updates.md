@@ -218,13 +218,14 @@ sequenceDiagram
     end
     capi->>capi: Decide Update Strategy
     loop For all Machines
-        capi->>apiserver: Mark Machine as pending and set UpToDate condition
+        capi->>apiserver: Mark Machine as pending
         apiserver->>mach: Notify changes
+        mach->>apiserver: Set UpToDate condition to False
         loop For all External Updaters
             mach->>hook: Run updater
         end
         mach->>apiserver: Mark Hooks in Machine as Done
-        capi->>apiserver: Set UpToDate condition
+        mach->>apiserver: Set UpToDate condition to True
     end
 ```
 
@@ -232,10 +233,10 @@ When configured, external updates will, roughly, follow these steps:
 1. CP/MD Controller: detect an update is required.
 2. CP/MD Controller: query defined update extensions, and based on the response decides if an update should happen in-place.
 3. CP/MD Controller: mark machines as pending using `sigs.k8s.io/cluster-api/internal/hooks.MarkAsPending()` function to track that updaters should be called.
-4. CP/MD Controller: set `UpToDate` condition on machines to `False`.
+4. Machine Controller: set `UpToDate` condition on machines to `False`.
 5. Machine Controller: invoke all registered updaters, sequentially, one by one.
 6. Machine Controller: once updaters finish use `sigs.k8s.io/cluster-api/internal/hooks.MarkAsDone()` to mark machine as done updating.
-7. CP/MD Controller: set `UpToDate` condition on machines to `True`.
+7. Machine Controller: set `UpToDate` condition on machines to `True`.
 
 The following sections dive deep into these steps, zooming in into the different component interactions and defining how the main error cases are handled.
 
@@ -298,15 +299,14 @@ apiserver->>Operator: OK
 capi->>capi: Decide Update Strategy
 capi->>apiserver: Create new MachineSet
 loop For all machines
-    capi->>apiserver: Mark as pending and move to new Machine Set
-    apiserver->>msc: Notify changes
-    msc->>apiserver: Update Machine Spec and set UpToDate condition
+    capi->>apiserver: Mark as pending, update spec, and move to new Machine Set
     apiserver->>mach: Notify changes
+    mach->>apiserver: Set UpToDate condition to False
     loop For all updaters in plan
         mach->>hook: Run updater
     end
     mach->>apiserver: Mark Hooks in Machine as Done
-    msc->>apiserver: Set UpToDate condition
+    mach->>apiserver: Set UpToDate condition to True
 end
 ```
 
@@ -318,8 +318,6 @@ the external updaters.
 ### KCP updates
 
 ```mermaid
-sequenceDiagram
-participant Operator
 box Management Cluster
     participant apiserver as kube-api server
     participant capi as KCP controller
@@ -332,17 +330,19 @@ apiserver->>capi: Notify changes
 apiserver->>Operator: OK
 capi->>capi: Decide Update Strategy
 loop For all machines
-    capi->>apiserver: Mark Machine as pending and set UpToDate condition
+    capi->>apiserver: Mark Machine as pending, update spec
     apiserver->>mach: Notify changes
+    mach->>apiserver: Set UpToDate condition to False
     loop For all External Updaters
         mach->>hook: Run updater
     end
-        mach->>apiserver: Mark Hooks in Machine as Done
-        capi->>capi: Set UpToDate condition
+    mach->>apiserver: Mark Hooks in Machine as Done
+    mach->>apiserver: Set UpToDate condition to True
 end
 ```
 
-The KCP external updates will work in a very similar way to MachineDeployments but removing the MachineSet level of indirection. In this case, it's the KCP controller the one in charge of marking machine as pending, setting a condition, and also updating the Machine spec. This follows this same pattern as for rolling updates, where the KCP controller directly creates and deletes Machines. Machines will be updated one by one, sequentially.
+The KCP external updates will work in a very similar way to MachineDeployments but removing the MachineSet level of indirection. In this case, it's the KCP controller responsible for marking the machine as pending and updating 
+the Machine spec, while the Machine controller manages setting the `UpToDate` condition. This follows this same pattern as for rolling updates, where the KCP controller directly creates and deletes Machines. Machines will be updated one by one, sequentially.
 
 ### Machine updates
 
@@ -361,21 +361,21 @@ box Workload Cluster
 end
 
 capi->>apiserver: Decide Update Strategy
-capi->>apiserver: Mark Machine as pending and set UpToDate condition
+capi->>apiserver: Mark Machine as pending, update spec
 apiserver->>mach: Notify changes
 mach->>hook: Start update
 hook->>infra: Update components
 loop For all External Updaters
     mach->>hook: finished?
-    hook2->>mach: try in X secs
+    hook->>mach: try in X secs
 end
 mach->>apiserver: Mark Hooks in Machine as Done
-capi->>apiserver: Set UpToDate condition
+mach->>apiserver: Set UpToDate condition to True
 ```
 
 Once a Machine is marked as pending and `UpToDate` condition is set and the Machine's spec has been updated with the desired changes, the Machine controller takes over. This controller is responsible for calling the updaters and tracking the progress of those updaters and exposing this progress in the Machine conditions.
 
-The Machine controller will not follow any order when calling the updaters. This might change in future iterations.
+The Machine controller currently calls registered external updaters sequentially but without a defined order. We are explicitly not trying to design a solution for ordering of execution at this stage. However, determining a specific ordering mechanism or dependency management between update extensions will need to be addressed in future iterations of this proposal.
 
 The controller will trigger updaters by hitting another RuntimeHook endpoint (eg. `/UpdateMachine`). The updater could respond saying "update completed", "update failed" or "update in progress" with an optional "retry after X seconds". The CAPI controller will continuously poll the status of the update by hitting the same endpoint until it reaches a terminal state.
 
@@ -443,7 +443,9 @@ sequenceDiagram
         capi->>+hook: Can update [spec.version,<br>clusterConfiguration.kubernetesVersion]?
         hook->>capi: I can update [spec.version,<br>clusterConfiguration.kubernetesVersion]
         capi->>capi: Decide Update Strategy
-        capi->>apiserver: Mark Machine as pending and set UpToDate condition
+        capi->>apiserver: Mark Machine as pending, update spec
+        apiserver->>mach: Notify changes
+        mach->>apiserver: Set UpToDate condition to False
         apiserver->>mach: Notify changes
         mach->>hook: Run update in<br> in Machine
         hook->>mach: In progress
@@ -452,7 +454,7 @@ sequenceDiagram
         mach->>hook: Run update in<br> in Machine
         hook->>mach: Done
         mach->>apiserver: Mark Hooks in Machine as Done
-        capi->>apiserver: Set UpToDate condition
+        mach->>apiserver: Set UpToDate condition
     end
 ```
 
