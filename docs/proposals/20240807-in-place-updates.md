@@ -461,10 +461,14 @@ sequenceDiagram
         apiserver->>mach: Notify changes
         mach->>apiserver: Set UpToDate condition to False
         apiserver->>mach: Notify changes
+        mach->>hook2: Run update in<br> in Machine
+        hook2->>mach: Done
         mach->>hook: Run update in<br> in Machine
-        hook->>mach: In progress
+        hook->>mach: In progress, requeue in 5 min
         hook->>machines: Update packages and<br>run kubeadm upgrade 1.31
         machines->>hook: Done
+        mach->>hook2: Run update in<br> in Machine
+        hook2->>mach: Done
         mach->>hook: Run update in<br> in Machine
         hook->>mach: Done
         mach->>apiserver: Mark Hooks in Machine as Done
@@ -489,7 +493,7 @@ spec:
 
 The KCP computes the difference between the current CP machines (plus bootstrap config and infra machine) and their desired state and detects a difference for the machine `spec.version` and for the KubeadmConfig `spec.clusterConfiguration.kubernetesVersion`. It then starts calling the external update extensions to see if they can handle these changes.
 
-First, it makes a request to the `vsphere-vm-memory-update/CanUpdateMachine` endpoint of the first update extension registered, the `vsphere-vm-memory-update` extension:
+First, it makes a request to the `vsphere-vm-memory-update/CanUpdateMachine` endpoint of the one of update extension registered, the `vsphere-vm-memory-update` extension in this case:
 
 ```json
 {
@@ -551,7 +555,24 @@ status:
 +   type: UpToDate
 ```
 
-These changes are observed by the Machine controller. Then it call all updaters. To trigger the updater, it calls the `kcp-version-upgrade/UpdateMachine` endpoint:
+These changes are observed by the Machine controller. Then it call all updaters. To trigger the updater, it calls the update extensions one by one. The `vsphere-vm-memory-update/UpdateMachine` receives the first request:
+
+```json
+{
+    "machineRef": {...},
+}
+```
+
+Since this extension has not been able to cover any of the changes, it responds with the `Done` (machine controller doesn't need to know if the update was accepted or rejected):
+
+```json
+{
+    "error": null,
+    "status": "Done"
+}
+```
+
+The Machine controller then sends a simillar request to `kcp-version-upgrade/UpdateMachine` endpoint:
 
 ```json
 {
@@ -569,17 +590,7 @@ When the `kcp-version-upgrade` extension receives the request, it verifies it ca
 }
 ```
 
-The Machine controller then sends a simillar request to `vsphere-vm-memory-update/UpdateMachine` endpoint, since this extension has not been able to cover any of the changes, it responds with the `Done` (machine controller doesn't need to know if 
-the update was accepted or rejected):
-
-```json
-{
-    "error": null,
-    "status": "Done"
-}
-```
-
-The Machine controller then requeues the reconcile request for this Machine for 5 minutes later. On the next reconciliation it repeats the request to the `kcp-version-upgrade/UpdateMachine` endpoint:
+The Machine controller then requeues the reconcile request for this Machine for 5 minutes later. On the next reconciliation it repeats the request to the `vsphere-vm-memory-update/UpdateMachine` endpoint:
 
 ```json
 {
@@ -587,7 +598,7 @@ The Machine controller then requeues the reconcile request for this Machine for 
 }
 ```
 
-The `kcp-version-upgrade` which has tracked the upgrade process reported by the agent, responds:
+The `vsphere-vm-memory-update` which is idempotent, returns `Done` response, once again.
 
 ```json
 {
@@ -596,7 +607,24 @@ The `kcp-version-upgrade` which has tracked the upgrade process reported by the 
 }
 ```
 
-The Machine controller then removes the annotation:
+The Machine controller then repeats the request to the previously pending `kcp-version-upgrade/UpdateMachine` endpoint:
+
+```json
+{
+    "machineRef": {...},
+}
+```
+
+The `kcp-version-upgrade` which has tracked the upgrade process reported by the agent and received the completion event, responds:
+
+```json
+{
+    "error": null,
+    "status": "Done"
+}
+```
+
+All in-place `ExternalUpdate` hooks are completed execution, so the Machine controller removes the annotation:
 
 ```diff
 apiVersion: cluster.x-k8s.io/v1beta1
